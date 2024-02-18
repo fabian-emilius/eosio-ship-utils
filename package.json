@@ -1,0 +1,49 @@
+{
+  "name": "eosio-ship-utils",
+  "version": "1.0.0",
+  "description": "EOSIO Ship utils",
+  "author": "",
+  "repository": "https://github.com/fabian-emilius/eosio-ship-utils",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start:example": "tsc && node build/bin/base-example.js",
+    "dev:start:example": "DEV=true nodemon src/bin/base-example.ts",
+    "docs": "nodemon docs/bin/docs.ts ",
+    "lint": "eslint 'src/**/*.ts'",
+    "prepare": "husky install"
+  },
+  "dependencies": {
+    "common-tags": "^1.8.2",
+    "eosjs": "^22.1.0",
+    "node-worker-threads-pool": "^1.5.1",
+    "p-queue": "^6.6.2",
+    "ws": "^8.13.0",
+    "node-fetch": "^2.6.9"
+  },
+  "devDependencies": {
+    "@types/common-tags": "^1.8.1",
+    "@types/elliptic": "^6.4.12",
+    "@types/node": "^14.14.45",
+    "@types/node-fetch": "^2.5.10",
+    "@types/ws": "^7.4.4",
+    "@typescript-eslint/eslint-plugin": "^5.9.1",
+    "@typescript-eslint/parser": "^5.9.1",
+    "eslint": "^8.6.0",
+    "eslint-config-prettier": "^8.3.0",
+    "husky": "^7.0.4",
+    "lint-staged": "^12.3.3",
+    "nodemon": "^2.0.15",
+    "nyc": "^15.1.0",
+    "prettier": "^2.7.1",
+    "ts-node": "^10.7.0",
+    "typescript": "^4.6.3"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "prettier --config .prettierrc.json --write",
+      "eslint --fix"
+    ]
+  }
+}

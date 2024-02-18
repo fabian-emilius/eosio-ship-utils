@@ -1,0 +1,6 @@
+build
+coverage
+logs
+node_modules
+
+package.json
