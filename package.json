@@ -1,6 +1,6 @@
 {
   "name": "spring-ship-tools",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TypeScript utilities for connecting to and consuming EOSIO/Antelope/Spring State History (Ship) WebSocket endpoints",
   "author": "Fabian Emilius",
   "license": "MIT",
