@@ -12,483 +12,462 @@ import { oneLineTrim } from 'common-tags';
 import { EOSJsDeserializer } from './deserializer/eos-js-deserializer.js';
 
 interface IStateHistoryConnectionParams {
-    endpoint: string;
-    connectionOptions?: IShipConnectionOptions;
-    deserializer?: EOSJsDeserializer;
+  endpoint: string;
+  connectionOptions?: IShipConnectionOptions;
+  deserializer?: EOSJsDeserializer;
 }
 
 export class StateHistoryConnection extends EventEmitter {
-    private readonly endpoint: string;
-    private connectionOptions: IShipConnectionOptions;
-    private shipOptions!: IBlockRequest;
+  private readonly endpoint: string;
+  private connectionOptions: IShipConnectionOptions;
+  private shipOptions!: IBlockRequest;
 
-    private consumer?: IShipConsumer;
-    private requiredDeltas: string[];
+  private consumer?: IShipConsumer;
+  private requiredDeltas: string[];
 
-    private abi?: Abi;
-    private types?: Map<string, Serialize.Type>;
+  private abi?: Abi;
+  private types?: Map<string, Serialize.Type>;
 
-    private ws?: WebSocket;
+  private ws?: WebSocket;
 
-    private connected: boolean;
-    private connecting: boolean;
-    private stopped: boolean;
+  private connected: boolean;
+  private connecting: boolean;
+  private stopped: boolean;
 
-    private blocksQueue: PQueue;
-    private deserializer: EOSJsDeserializer;
+  private blocksQueue: PQueue;
+  private deserializer: EOSJsDeserializer;
 
-    private unconfirmed: number = 0;
+  private unconfirmed: number = 0;
 
-    constructor(params: IStateHistoryConnectionParams) {
-        super();
-        this.endpoint = params.endpoint;
-        this.connectionOptions = {
-            min_block_confirmation: 1,
-            allow_empty_deltas: false,
-            allow_empty_traces: false,
-            allow_empty_blocks: false,
-            ...(params.connectionOptions || {}),
-        };
+  constructor(params: IStateHistoryConnectionParams) {
+    super();
+    this.endpoint = params.endpoint;
+    this.connectionOptions = {
+      min_block_confirmation: 1,
+      allow_empty_deltas: false,
+      allow_empty_traces: false,
+      allow_empty_blocks: false,
+      ...(params.connectionOptions || {}),
+    };
 
-        this.deserializer = params.deserializer || new EOSJsDeserializer({ threads: 0 });
+    this.deserializer = params.deserializer || new EOSJsDeserializer({ threads: 0 });
 
-        this.connected = false;
-        this.connecting = false;
-        this.stopped = true;
+    this.connected = false;
+    this.connecting = false;
+    this.stopped = true;
 
-        this.blocksQueue = new PQueue({ concurrency: 1, autoStart: true });
+    this.blocksQueue = new PQueue({ concurrency: 1, autoStart: true });
 
-        this.requiredDeltas = [];
+    this.requiredDeltas = [];
+  }
+
+  connect(): void {
+    if (!this.connected && !this.connecting && !this.stopped) {
+      this.emit('info', `Connecting to ship endpoint ${this.endpoint}`);
+
+      this.connecting = true;
+
+      this.ws = new WebSocket(this.endpoint, {
+        maxPayload: 16 * 1024 * 1024 * 1024,
+      });
+
+      this.ws.on('open', () => this.onConnect());
+      this.ws.on('message', (data: WebSocket.RawData) => this.onMessage(data));
+      this.ws.on('close', () => this.onClose());
+      this.ws.on('error', (e: Error) => {
+        this.emit('error', new ShipError('Websocket Error', e));
+      });
+    }
+  }
+
+  reconnect(): void {
+    if (this.stopped) {
+      return;
     }
 
-    connect(): void {
-        if (!this.connected && !this.connecting && !this.stopped) {
-            this.emit('info', `Connecting to ship endpoint ${this.endpoint}`);
+    setTimeout(() => {
+      this.emit('info', 'Reconnecting to Ship...');
 
-            this.connecting = true;
+      this.connect();
+    }, 5000);
+  }
 
-            this.ws = new WebSocket(this.endpoint, {
-                maxPayload: 16 * 1024 * 1024 * 1024,
-            });
+  send(request: [string, unknown]): void {
+    this.ws!.send(serializeEosioType('request', request, this.types!));
+  }
 
-            this.ws.on('open', () => this.onConnect());
-            this.ws.on('message', (data: WebSocket.RawData) => this.onMessage(data));
-            this.ws.on('close', () => this.onClose());
-            this.ws.on('error', (e: Error) => {
-                this.emit('error', new ShipError('Websocket Error', e));
-            });
+  onConnect(): void {
+    this.connected = true;
+    this.connecting = false;
+  }
+
+  getQueueSize(): number {
+    return this.blocksQueue.size;
+  }
+
+  async onMessage(data: WebSocket.RawData): Promise<void> {
+    try {
+      if (!this.abi) {
+        this.emit('info', 'Receiving ABI from ship...');
+        this.abi = JSON.parse(data.toString());
+        this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi!);
+
+        await this.deserializer.init(this.abi!);
+
+        if (!this.stopped) {
+          this.requestBlocks();
         }
-    }
+      } else {
+        const [type, response] = deserializeEosioType('result', data as Buffer, this.types!);
 
-    reconnect(): void {
-        if (this.stopped) {
-            return;
-        }
+        if (['get_blocks_result_v0', 'get_blocks_result_v1'].includes(type)) {
+          const respConfig: { [key: string]: { version: number } } = {
+            get_blocks_result_v0: { version: 0 },
+            get_blocks_result_v1: { version: 1 },
+            get_blocks_result_v2: { version: 2 },
+          };
 
-        setTimeout(() => {
-            this.emit('info', 'Reconnecting to Ship...');
+          let blockDeserialize: Promise<unknown> = Promise.resolve(undefined);
+          let traces: Promise<unknown> = Promise.resolve([]);
+          let deltas: Promise<unknown> = Promise.resolve([]);
 
-            this.connect();
-        }, 5000);
-    }
+          if (response.this_block) {
+            if (response.block) {
+              if (respConfig[type].version === 2) {
+                blockDeserialize = this.deserialize('signed_block_variant', response.block).then((res) => {
+                  const [blockType, blockData] = res as [string, unknown];
+                  if (blockType === 'signed_block_v1') {
+                    return blockData;
+                  }
 
-    send(request: [string, unknown]): void {
-        this.ws!.send(serializeEosioType('request', request, this.types!));
-    }
-
-    onConnect(): void {
-        this.connected = true;
-        this.connecting = false;
-    }
-
-    getQueueSize(): number {
-        return this.blocksQueue.size;
-    }
-
-    async onMessage(data: WebSocket.RawData): Promise<void> {
-        try {
-            if (!this.abi) {
-                this.emit('info', 'Receiving ABI from ship...');
-                this.abi = JSON.parse(data.toString());
-                this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi!);
-
-                await this.deserializer.init(this.abi!);
-
-                if (!this.stopped) {
-                    this.requestBlocks();
-                }
-            } else {
-                const [type, response] = deserializeEosioType('result', data as Buffer, this.types!);
-
-                if (['get_blocks_result_v0', 'get_blocks_result_v1'].includes(type)) {
-                    const respConfig: { [key: string]: { version: number } } = {
-                        get_blocks_result_v0: { version: 0 },
-                        get_blocks_result_v1: { version: 1 },
-                        get_blocks_result_v2: { version: 2 },
-                    };
-
-                    let blockDeserialize: Promise<unknown> = Promise.resolve(undefined);
-                    let traces: Promise<unknown> = Promise.resolve([]);
-                    let deltas: Promise<unknown> = Promise.resolve([]);
-
-                    if (response.this_block) {
-                        if (response.block) {
-                            if (respConfig[type].version === 2) {
-                                blockDeserialize = this.deserialize('signed_block_variant', response.block).then(
-                                    (res) => {
-                                        const [blockType, blockData] = res as [string, unknown];
-                                        if (blockType === 'signed_block_v1') {
-                                            return blockData;
-                                        }
-
-                                        throw new Error(`Unsupported table block type received ${blockType}`);
-                                    }
-                                );
-                            } else if (respConfig[type].version === 1) {
-                                if (response.block[0] === 'signed_block_v1') {
-                                    blockDeserialize = Promise.resolve(response.block[1]);
-                                } else {
-                                    blockDeserialize = Promise.reject(
-                                        new Error(`Unsupported table block type received ${response.block[0]}`)
-                                    );
-                                }
-                            } else if (respConfig[type].version === 0) {
-                                blockDeserialize = this.deserialize('signed_block', response.block);
-                            } else {
-                                blockDeserialize = Promise.reject(
-                                    new Error(`Unsupported table result type received ${  type}`)
-                                );
-                            }
-                        } else if (this.shipOptions.fetch_block) {
-                            if (this.connectionOptions.allow_empty_blocks) {
-                                this.emit(
-                                    'warning',
-                                    `Block #${response.this_block.block_num} does not contain block data`
-                                );
-                            } else {
-                                this.emit(
-                                    'error',
-                                    new ShipError(`Block #${response.this_block.block_num} does not contain block data`)
-                                );
-
-                                return this.blocksQueue.pause();
-                            }
-                        }
-
-                        if (response.traces) {
-                            traces = this.deserialize('transaction_trace[]', response.traces);
-                        } else if (this.shipOptions.fetch_traces) {
-                            if (this.connectionOptions.allow_empty_traces) {
-                                this.emit(
-                                    'warning',
-                                    `Block #${response.this_block.block_num} does not contain trace data`
-                                );
-                            } else {
-                                this.emit(
-                                    'error',
-                                    new ShipError(`Block #${response.this_block.block_num} does not contain trace data`)
-                                );
-
-                                return this.blocksQueue.pause();
-                            }
-                        }
-
-                        if (response.deltas) {
-                            deltas = this.deserialize('table_delta[]', response.deltas).then((res) =>
-                                this.deserializeDeltas(res as unknown[])
-                            );
-                        } else if (this.shipOptions.fetch_deltas) {
-                            if (this.connectionOptions.allow_empty_deltas) {
-                                this.emit(
-                                    'warning',
-                                    `Block #${response.this_block.block_num} does not contain delta data`
-                                );
-                            } else {
-                                this.emit(
-                                    'error',
-                                    new ShipError(`Block #${response.this_block.block_num} does not contain delta data`)
-                                );
-
-                                return this.blocksQueue.pause();
-                            }
-                        }
-                    }
-
-                    this.blocksQueue
-                        .add(async () => {
-                            if (response.this_block) {
-                                this.shipOptions.start_block_num = response.this_block.block_num + 1;
-                            } else {
-                                this.shipOptions.start_block_num = (this.shipOptions.start_block_num ?? 0) + 1;
-                            }
-
-                            const thisBlock = response.this_block;
-                            const lastIrreversible = response.last_irreversible;
-
-                            if (thisBlock && lastIrreversible) {
-                                this.shipOptions.have_positions = (this.shipOptions.have_positions ?? []).filter(
-                                    (row) =>
-                                        row.block_num > lastIrreversible.block_num &&
-                                        row.block_num < thisBlock.block_num
-                                );
-
-                                if (thisBlock.block_num > lastIrreversible.block_num) {
-                                    this.shipOptions.have_positions.push(thisBlock);
-                                }
-                            }
-
-                            let deserializedTraces: ShipBlockResponse['traces'] = [];
-                            let deserializedDeltas: ShipBlockResponse['deltas'] = [];
-                            let deserializedBlock: unknown;
-                            try {
-                                deserializedBlock = await blockDeserialize;
-                            } catch (e) {
-                                this.emit(
-                                    'error',
-                                    new ShipError(
-                                        `Failed to deserialize Block at block #${  response.this_block.block_num}`,
-                                        e as Error
-                                    )
-                                );
-
-                                this.blocksQueue.clear();
-                                this.blocksQueue.pause();
-
-                                throw e;
-                            }
-
-                            try {
-                                deserializedTraces = (await traces) as ShipBlockResponse['traces'];
-                            } catch (error) {
-                                this.emit(
-                                    'error',
-                                    new ShipError(
-                                        `Failed to deserialize traces at block #${  response.this_block.block_num}`,
-                                        error as Error
-                                    )
-                                );
-
-                                this.blocksQueue.clear();
-                                this.blocksQueue.pause();
-
-                                throw error;
-                            }
-
-                            try {
-                                deserializedDeltas = (await deltas) as ShipBlockResponse['deltas'];
-                            } catch (error) {
-                                this.emit(
-                                    'error',
-                                    new ShipError(
-                                        `Failed to deserialize deltas at block #${  response.this_block.block_num}`,
-                                        error as Error
-                                    )
-                                );
-
-                                this.blocksQueue.clear();
-                                this.blocksQueue.pause();
-
-                                throw error;
-                            }
-
-                            try {
-                                await this.processBlock({
-                                    this_block: response.this_block,
-                                    head: response.head,
-                                    last_irreversible: response.last_irreversible,
-                                    prev_block: response.prev_block,
-                                    block: Object.assign(
-                                        { ...response.this_block },
-                                        deserializedBlock,
-                                        { last_irreversible: response.last_irreversible },
-                                        { head: response.head }
-                                    ),
-                                    traces: deserializedTraces,
-                                    deltas: deserializedDeltas,
-                                });
-                            } catch (error) {
-                                this.emit(
-                                    'error',
-                                    new ShipError(
-                                        `Ship blocks queue stopped due to an error at #${response.this_block.block_num}`,
-                                        error as Error
-                                    )
-                                );
-
-                                this.blocksQueue.clear();
-                                this.blocksQueue.pause();
-
-                                throw error;
-                            }
-
-                            this.unconfirmed += 1;
-
-                            if (this.unconfirmed >= (this.connectionOptions.min_block_confirmation ?? 1)) {
-                                this.send(['get_blocks_ack_request_v0', { num_messages: this.unconfirmed }]);
-                                this.unconfirmed = 0;
-                            }
-                        })
-                        .then();
+                  throw new Error(`Unsupported table block type received ${blockType}`);
+                });
+              } else if (respConfig[type].version === 1) {
+                if (response.block[0] === 'signed_block_v1') {
+                  blockDeserialize = Promise.resolve(response.block[1]);
                 } else {
-                    this.emit('warning', 'Not supported message received', {
-                        type,
-                        response,
-                    });
+                  blockDeserialize = Promise.reject(
+                    new Error(`Unsupported table block type received ${response.block[0]}`),
+                  );
                 }
-            }
-        } catch (e) {
-            this.emit('error', new ShipError('error while processing message', e as Error));
-
-            this.ws?.close();
-        }
-    }
-
-    async onClose(): Promise<void> {
-        this.emit('error', new ShipError('Ship Websocket disconnected'));
-
-        if (this.ws) {
-            await this.ws.terminate();
-            this.ws = undefined;
-        }
-
-        this.abi = undefined;
-        this.types = undefined;
-        this.connected = false;
-        this.connecting = false;
-
-        this.blocksQueue.clear();
-        await this.deserializer?.terminate();
-        this.reconnect();
-    }
-
-    requestBlocks(): void {
-        this.unconfirmed = 0;
-
-        this.emit('info', `Requesting ship blocks ${JSON.stringify(this.shipOptions)}`);
-
-        this.send(['get_blocks_request_v0', this.shipOptions]);
-    }
-
-    async startProcessing(consumer: IShipConsumer): Promise<void> {
-        this.emit('info', 'Starting ship connection...');
-
-        const requestConfig = await consumer.getRequestBlockConfig();
-
-        this.shipOptions = {
-            start_block_num: 0,
-            end_block_num: 0xffffffff,
-            max_messages_in_flight: 1,
-            have_positions: [],
-            irreversible_only: false,
-            fetch_block: false,
-            fetch_traces: false,
-            fetch_deltas: false,
-            ...requestConfig,
-        };
-
-        this.requiredDeltas = consumer.getRequiredDeltas();
-        this.consumer = consumer;
-        this.stopped = false;
-
-        if (this.connected && this.abi) {
-            this.requestBlocks();
-        }
-
-        this.blocksQueue.start();
-
-        this.connect();
-    }
-
-    stopProcessing(): void {
-        this.stopped = true;
-
-        this.consumer = undefined;
-        this.requiredDeltas = [];
-
-        this.ws?.close();
-
-        this.blocksQueue.clear();
-        this.blocksQueue.pause();
-    }
-
-    async processBlock(block: ShipBlockResponse): Promise<void> {
-        if (!block.this_block) {
-            if ((this.shipOptions.start_block_num ?? 0) >= (this.shipOptions.end_block_num ?? 0xffffffff)) {
+              } else if (respConfig[type].version === 0) {
+                blockDeserialize = this.deserialize('signed_block', response.block);
+              } else {
+                blockDeserialize = Promise.reject(new Error(`Unsupported table result type received ${type}`));
+              }
+            } else if (this.shipOptions.fetch_block) {
+              if (this.connectionOptions.allow_empty_blocks) {
+                this.emit('warning', `Block #${response.this_block.block_num} does not contain block data`);
+              } else {
                 this.emit(
-                    'warning',
-                    `Empty block #${this.shipOptions.start_block_num} received. Reader finished reading.`
+                  'error',
+                  new ShipError(`Block #${response.this_block.block_num} does not contain block data`),
                 );
-            } else if ((this.shipOptions.start_block_num ?? 0) % 10000 === 0) {
+
+                return this.blocksQueue.pause();
+              }
+            }
+
+            if (response.traces) {
+              traces = this.deserialize('transaction_trace[]', response.traces);
+            } else if (this.shipOptions.fetch_traces) {
+              if (this.connectionOptions.allow_empty_traces) {
+                this.emit('warning', `Block #${response.this_block.block_num} does not contain trace data`);
+              } else {
                 this.emit(
-                    'warning',
-                    oneLineTrim`Empty block #
+                  'error',
+                  new ShipError(`Block #${response.this_block.block_num} does not contain trace data`),
+                );
+
+                return this.blocksQueue.pause();
+              }
+            }
+
+            if (response.deltas) {
+              deltas = this.deserialize('table_delta[]', response.deltas).then((res) =>
+                this.deserializeDeltas(res as unknown[]),
+              );
+            } else if (this.shipOptions.fetch_deltas) {
+              if (this.connectionOptions.allow_empty_deltas) {
+                this.emit('warning', `Block #${response.this_block.block_num} does not contain delta data`);
+              } else {
+                this.emit(
+                  'error',
+                  new ShipError(`Block #${response.this_block.block_num} does not contain delta data`),
+                );
+
+                return this.blocksQueue.pause();
+              }
+            }
+          }
+
+          this.blocksQueue
+            .add(async () => {
+              if (response.this_block) {
+                this.shipOptions.start_block_num = response.this_block.block_num + 1;
+              } else {
+                this.shipOptions.start_block_num = (this.shipOptions.start_block_num ?? 0) + 1;
+              }
+
+              const thisBlock = response.this_block;
+              const lastIrreversible = response.last_irreversible;
+
+              if (thisBlock && lastIrreversible) {
+                this.shipOptions.have_positions = (this.shipOptions.have_positions ?? []).filter(
+                  (row) => row.block_num > lastIrreversible.block_num && row.block_num < thisBlock.block_num,
+                );
+
+                if (thisBlock.block_num > lastIrreversible.block_num) {
+                  this.shipOptions.have_positions.push(thisBlock);
+                }
+              }
+
+              let deserializedTraces: ShipBlockResponse['traces'] = [];
+              let deserializedDeltas: ShipBlockResponse['deltas'] = [];
+              let deserializedBlock: unknown;
+              try {
+                deserializedBlock = await blockDeserialize;
+              } catch (e) {
+                this.emit(
+                  'error',
+                  new ShipError(`Failed to deserialize Block at block #${response.this_block.block_num}`, e as Error),
+                );
+
+                this.blocksQueue.clear();
+                this.blocksQueue.pause();
+
+                throw e;
+              }
+
+              try {
+                deserializedTraces = (await traces) as ShipBlockResponse['traces'];
+              } catch (error) {
+                this.emit(
+                  'error',
+                  new ShipError(
+                    `Failed to deserialize traces at block #${response.this_block.block_num}`,
+                    error as Error,
+                  ),
+                );
+
+                this.blocksQueue.clear();
+                this.blocksQueue.pause();
+
+                throw error;
+              }
+
+              try {
+                deserializedDeltas = (await deltas) as ShipBlockResponse['deltas'];
+              } catch (error) {
+                this.emit(
+                  'error',
+                  new ShipError(
+                    `Failed to deserialize deltas at block #${response.this_block.block_num}`,
+                    error as Error,
+                  ),
+                );
+
+                this.blocksQueue.clear();
+                this.blocksQueue.pause();
+
+                throw error;
+              }
+
+              try {
+                await this.processBlock({
+                  this_block: response.this_block,
+                  head: response.head,
+                  last_irreversible: response.last_irreversible,
+                  prev_block: response.prev_block,
+                  block: Object.assign(
+                    { ...response.this_block },
+                    deserializedBlock,
+                    { last_irreversible: response.last_irreversible },
+                    { head: response.head },
+                  ),
+                  traces: deserializedTraces,
+                  deltas: deserializedDeltas,
+                });
+              } catch (error) {
+                this.emit(
+                  'error',
+                  new ShipError(
+                    `Ship blocks queue stopped due to an error at #${response.this_block.block_num}`,
+                    error as Error,
+                  ),
+                );
+
+                this.blocksQueue.clear();
+                this.blocksQueue.pause();
+
+                throw error;
+              }
+
+              this.unconfirmed += 1;
+
+              if (this.unconfirmed >= (this.connectionOptions.min_block_confirmation ?? 1)) {
+                this.send(['get_blocks_ack_request_v0', { num_messages: this.unconfirmed }]);
+                this.unconfirmed = 0;
+              }
+            })
+            .then();
+        } else {
+          this.emit('warning', 'Not supported message received', {
+            type,
+            response,
+          });
+        }
+      }
+    } catch (e) {
+      this.emit('error', new ShipError('error while processing message', e as Error));
+
+      this.ws?.close();
+    }
+  }
+
+  async onClose(): Promise<void> {
+    this.emit('error', new ShipError('Ship Websocket disconnected'));
+
+    if (this.ws) {
+      await this.ws.terminate();
+      this.ws = undefined;
+    }
+
+    this.abi = undefined;
+    this.types = undefined;
+    this.connected = false;
+    this.connecting = false;
+
+    this.blocksQueue.clear();
+    await this.deserializer?.terminate();
+    this.reconnect();
+  }
+
+  requestBlocks(): void {
+    this.unconfirmed = 0;
+
+    this.emit('info', `Requesting ship blocks ${JSON.stringify(this.shipOptions)}`);
+
+    this.send(['get_blocks_request_v0', this.shipOptions]);
+  }
+
+  async startProcessing(consumer: IShipConsumer): Promise<void> {
+    this.emit('info', 'Starting ship connection...');
+
+    const requestConfig = await consumer.getRequestBlockConfig();
+
+    this.shipOptions = {
+      start_block_num: 0,
+      end_block_num: 0xffffffff,
+      max_messages_in_flight: 1,
+      have_positions: [],
+      irreversible_only: false,
+      fetch_block: false,
+      fetch_traces: false,
+      fetch_deltas: false,
+      ...requestConfig,
+    };
+
+    this.requiredDeltas = consumer.getRequiredDeltas();
+    this.consumer = consumer;
+    this.stopped = false;
+
+    if (this.connected && this.abi) {
+      this.requestBlocks();
+    }
+
+    this.blocksQueue.start();
+
+    this.connect();
+  }
+
+  stopProcessing(): void {
+    this.stopped = true;
+
+    this.consumer = undefined;
+    this.requiredDeltas = [];
+
+    this.ws?.close();
+
+    this.blocksQueue.clear();
+    this.blocksQueue.pause();
+  }
+
+  async processBlock(block: ShipBlockResponse): Promise<void> {
+    if (!block.this_block) {
+      if ((this.shipOptions.start_block_num ?? 0) >= (this.shipOptions.end_block_num ?? 0xffffffff)) {
+        this.emit('warning', `Empty block #${this.shipOptions.start_block_num} received. Reader finished reading.`);
+      } else if ((this.shipOptions.start_block_num ?? 0) % 10000 === 0) {
+        this.emit(
+          'warning',
+          oneLineTrim`Empty block #
                         ${this.shipOptions.start_block_num}
                         received.
                         Node was likely started with a snapshot and you tried to process a block range
-                        before the snapshot. Catching up until init block.`
-                );
-            }
-
-            return;
-        }
-
-        await this.consumer!.consume(block);
-
-        this.emit('debug', `Block ${block.block.block_num} processed`);
-    }
-
-    private async deserialize(type: string, data: Uint8Array): Promise<unknown> {
-        const result = await this.deserializer.deserialize([{ type, data }]);
-        if (result[0].success) {
-            return result[0].data;
-        }
-
-        throw new Error(result[0].message);
-    }
-
-    private async deserializeArray(rows: Array<{ type: string; data: Uint8Array }>): Promise<unknown[]> {
-        const result = await this.deserializer.deserialize(rows);
-
-        const dsError = result.find((row) => !row.success);
-
-        if (dsError) {
-            throw new Error(dsError.message);
-        }
-
-        return result.map((row) => row.data);
-    }
-
-    private async deserializeDeltas(deltas: unknown[]): Promise<unknown[]> {
-        type TableDeltaTuple = [string, { name: string; rows: Array<{ present: boolean; data: Uint8Array }> }];
-        return await Promise.all(
-            deltas.map(async (rawDelta) => {
-                const delta = rawDelta as TableDeltaTuple;
-                if (delta[0] === 'table_delta_v0' || delta[0] === 'table_delta_v1') {
-                    if (this.requiredDeltas.includes(delta[1].name)) {
-                        const deserialized = await this.deserializeArray(
-                            delta[1].rows.map((row) => ({
-                                type: delta[1].name,
-                                data: row.data,
-                            }))
-                        );
-
-                        return [
-                            delta[0],
-                            {
-                                ...delta[1],
-                                rows: delta[1].rows.map((row, index) => ({
-                                    present: !!row.present,
-                                    data: deserialized[index],
-                                })),
-                            },
-                        ];
-                    }
-
-                    return delta;
-                }
-
-                throw Error(`Unsupported table delta type received ${delta[0]}`);
-            })
+                        before the snapshot. Catching up until init block.`,
         );
+      }
+
+      return;
     }
+
+    await this.consumer!.consume(block);
+
+    this.emit('debug', `Block ${block.block.block_num} processed`);
+  }
+
+  private async deserialize(type: string, data: Uint8Array): Promise<unknown> {
+    const result = await this.deserializer.deserialize([{ type, data }]);
+    if (result[0].success) {
+      return result[0].data;
+    }
+
+    throw new Error(result[0].message);
+  }
+
+  private async deserializeArray(rows: Array<{ type: string; data: Uint8Array }>): Promise<unknown[]> {
+    const result = await this.deserializer.deserialize(rows);
+
+    const dsError = result.find((row) => !row.success);
+
+    if (dsError) {
+      throw new Error(dsError.message);
+    }
+
+    return result.map((row) => row.data);
+  }
+
+  private async deserializeDeltas(deltas: unknown[]): Promise<unknown[]> {
+    type TableDeltaTuple = [string, { name: string; rows: Array<{ present: boolean; data: Uint8Array }> }];
+    return await Promise.all(
+      deltas.map(async (rawDelta) => {
+        const delta = rawDelta as TableDeltaTuple;
+        if (delta[0] === 'table_delta_v0' || delta[0] === 'table_delta_v1') {
+          if (this.requiredDeltas.includes(delta[1].name)) {
+            const deserialized = await this.deserializeArray(
+              delta[1].rows.map((row) => ({
+                type: delta[1].name,
+                data: row.data,
+              })),
+            );
+
+            return [
+              delta[0],
+              {
+                ...delta[1],
+                rows: delta[1].rows.map((row, index) => ({
+                  present: !!row.present,
+                  data: deserialized[index],
+                })),
+              },
+            ];
+          }
+
+          return delta;
+        }
+
+        throw Error(`Unsupported table delta type received ${delta[0]}`);
+      }),
+    );
+  }
 }

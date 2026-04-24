@@ -1,47 +1,41 @@
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
 
-import {
-    FullShipBlock,
-    IBlockRequest,
-    IExtractedShipDelta,
-    IExtractedShipTrace,
-    ShipBlockResponse,
-} from './ship.js';
+import { FullShipBlock, IBlockRequest, IExtractedShipDelta, IExtractedShipTrace, ShipBlockResponse } from './ship.js';
 
 export interface IAbiProvider {
-    init(): Promise<void>;
+  init(): Promise<void>;
 
-    getAbi(contract: string, blockNum: number): Promise<Abi>;
+  getAbi(contract: string, blockNum: number): Promise<Abi>;
 
-    setAbi(contract: string, blockNum: number, abi: Abi): Promise<void>;
+  setAbi(contract: string, blockNum: number, abi: Abi): Promise<void>;
 }
 
 export interface IShipConsumer {
-    consume(block: ShipBlockResponse): Promise<void>;
+  consume(block: ShipBlockResponse): Promise<void>;
 
-    getRequestBlockConfig(): Promise<IBlockRequest>;
+  getRequestBlockConfig(): Promise<IBlockRequest>;
 
-    getRequiredDeltas(): string[];
+  getRequiredDeltas(): string[];
 }
 
 export interface IProcessedBlockRepository {
-    updateReversibleBlock(resp: ShipBlockResponse): Promise<void>;
+  updateReversibleBlock(resp: ShipBlockResponse): Promise<void>;
 
-    getLastProcessedBlock(): Promise<number>;
+  getLastProcessedBlock(): Promise<number>;
 
-    getReversibleBlocks(): Promise<Array<{ block_num: number; block_id: string }>>;
+  getReversibleBlocks(): Promise<Array<{ block_num: number; block_id: string }>>;
 
-    updateLastProcessedBlock(resp: ShipBlockResponse): Promise<void>;
+  updateLastProcessedBlock(resp: ShipBlockResponse): Promise<void>;
 }
 
 export interface IBlockProcessor {
-    onBlockStart(data: { block: FullShipBlock }): Promise<void>;
+  onBlockStart(data: { block: FullShipBlock }): Promise<void>;
 
-    processBlock(data: {
-        block: FullShipBlock;
-        traces: IExtractedShipTrace<Uint8Array>[];
-        deltas: IExtractedShipDelta<Uint8Array>[];
-    }): Promise<void>;
+  processBlock(data: {
+    block: FullShipBlock;
+    traces: IExtractedShipTrace<Uint8Array>[];
+    deltas: IExtractedShipDelta<Uint8Array>[];
+  }): Promise<void>;
 
-    onBlockFinished(data: { block: FullShipBlock }): Promise<void>;
+  onBlockFinished(data: { block: FullShipBlock }): Promise<void>;
 }
