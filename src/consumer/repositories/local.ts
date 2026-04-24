@@ -26,7 +26,7 @@ export class LocalBlockRepository implements IProcessedBlockRepository {
         return this.reversibleBlocks;
     }
 
-    async updateLastProcessedBlock(resp: ShipBlockResponse) {
+    async updateLastProcessedBlock(resp: ShipBlockResponse): Promise<void> {
         this.currentBlock = resp.block.block_num;
     }
 }

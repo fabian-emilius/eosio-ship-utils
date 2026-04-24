@@ -5,12 +5,11 @@ import {
     IBlockRequest,
     IExtractedShipDelta,
     IExtractedShipTrace,
-    ShipBlock,
     ShipBlockResponse,
 } from './ship.js';
 
 export interface IAbiProvider {
-    init(): Promise<any>;
+    init(): Promise<void>;
 
     getAbi(contract: string, blockNum: number): Promise<Abi>;
 
@@ -18,7 +17,7 @@ export interface IAbiProvider {
 }
 
 export interface IShipConsumer {
-    consume(block: ShipBlockResponse): Promise<any>;
+    consume(block: ShipBlockResponse): Promise<void>;
 
     getRequestBlockConfig(): Promise<IBlockRequest>;
 

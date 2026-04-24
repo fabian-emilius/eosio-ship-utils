@@ -1,11 +1,11 @@
-export type EosioAction<T = { [key: string]: any } | string> = {
+export type EosioAction<T = { [key: string]: unknown } | string> = {
     account: string;
     name: string;
     authorization: Array<{ actor: string; permission: string }>;
     data: T;
 };
 
-export type EosioActionTrace<T = { [key: string]: any } | string> = {
+export type EosioActionTrace<T = { [key: string]: unknown } | string> = {
     action_ordinal: number;
     creator_action_ordinal: number;
     global_sequence: string;
@@ -13,14 +13,14 @@ export type EosioActionTrace<T = { [key: string]: any } | string> = {
     act: EosioAction<T>;
 };
 
-export type EosioTransaction<T = { [key: string]: any } | string> = {
+export type EosioTransaction<T = { [key: string]: unknown } | string> = {
     id: string;
     cpu_usage_us: number;
     net_usage_words: number;
     traces: Array<EosioActionTrace<T>>;
 };
 
-export type EosioContractRow<T = { [key: string]: any } | string> = {
+export type EosioContractRow<T = { [key: string]: unknown } | string> = {
     code: string;
     scope: string;
     table: string;

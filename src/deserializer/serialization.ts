@@ -12,7 +12,7 @@ import { EosioActionTrace, EosioTransaction } from '../types/leap.js';
 import { createAbiTypes, getTypesFromAbi, SerialBuffer, supportedAbiVersion } from 'eosjs/dist/eosjs-serialize';
 
 export function convertEosioTimestampToDate(timestamp: string): Date {
-    return new Date(timestamp + '+0000');
+    return new Date(`${timestamp  }+0000`);
 }
 
 export function deserializeEosioType(
@@ -20,6 +20,7 @@ export function deserializeEosioType(
     data: Uint8Array | string,
     types: Map<string, Serialize.Type>,
     checkLength: boolean = true
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): any {
     let dataArray;
     if (typeof data === 'string') {
@@ -40,13 +41,13 @@ export function deserializeEosioType(
     );
 
     if (buffer.readPos !== data.length && checkLength) {
-        throw new Error('Deserialization error: ' + type);
+        throw new Error(`Deserialization error: ${  type}`);
     }
 
     return result;
 }
 
-export function serializeEosioType(type: string, value: any, types: Map<string, Serialize.Type>): Uint8Array {
+export function serializeEosioType(type: string, value: unknown, types: Map<string, Serialize.Type>): Uint8Array {
     const buffer = new Serialize.SerialBuffer({ textEncoder: new TextEncoder(), textDecoder: new TextDecoder() });
 
     Serialize.getType(types, type).serialize(buffer, value);

@@ -72,7 +72,7 @@ export class StateHistoryConnection extends EventEmitter {
             });
 
             this.ws.on('open', () => this.onConnect());
-            this.ws.on('message', (data: any) => this.onMessage(data));
+            this.ws.on('message', (data: WebSocket.RawData) => this.onMessage(data));
             this.ws.on('close', () => this.onClose());
             this.ws.on('error', (e: Error) => {
                 this.emit('error', new ShipError('Websocket Error', e));
@@ -92,7 +92,7 @@ export class StateHistoryConnection extends EventEmitter {
         }, 5000);
     }
 
-    send(request: [string, any]): void {
+    send(request: [string, unknown]): void {
         this.ws!.send(serializeEosioType('request', request, this.types!));
     }
 
@@ -105,11 +105,11 @@ export class StateHistoryConnection extends EventEmitter {
         return this.blocksQueue.size;
     }
 
-    async onMessage(data: any): Promise<void> {
+    async onMessage(data: WebSocket.RawData): Promise<void> {
         try {
             if (!this.abi) {
                 this.emit('info', 'Receiving ABI from ship...');
-                this.abi = JSON.parse(data);
+                this.abi = JSON.parse(data.toString());
                 this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi!);
 
                 await this.deserializer.init(this.abi!);
@@ -118,7 +118,7 @@ export class StateHistoryConnection extends EventEmitter {
                     this.requestBlocks();
                 }
             } else {
-                const [type, response] = deserializeEosioType('result', data, this.types!);
+                const [type, response] = deserializeEosioType('result', data as Buffer, this.types!);
 
                 if (['get_blocks_result_v0', 'get_blocks_result_v1'].includes(type)) {
                     const respConfig: { [key: string]: { version: number } } = {
@@ -127,20 +127,21 @@ export class StateHistoryConnection extends EventEmitter {
                         get_blocks_result_v2: { version: 2 },
                     };
 
-                    let blockDeserialize: Promise<any>;
-                    let traces: any = [];
-                    let deltas: any = [];
+                    let blockDeserialize: Promise<unknown> = Promise.resolve(undefined);
+                    let traces: Promise<unknown> = Promise.resolve([]);
+                    let deltas: Promise<unknown> = Promise.resolve([]);
 
                     if (response.this_block) {
                         if (response.block) {
                             if (respConfig[type].version === 2) {
                                 blockDeserialize = this.deserialize('signed_block_variant', response.block).then(
-                                    (res: any) => {
-                                        if (res[0] === 'signed_block_v1') {
-                                            return res[1];
+                                    (res) => {
+                                        const [blockType, blockData] = res as [string, unknown];
+                                        if (blockType === 'signed_block_v1') {
+                                            return blockData;
                                         }
 
-                                        throw new Error(`Unsupported table block type received ${res[0]}`);
+                                        throw new Error(`Unsupported table block type received ${blockType}`);
                                     }
                                 );
                             } else if (respConfig[type].version === 1) {
@@ -155,7 +156,7 @@ export class StateHistoryConnection extends EventEmitter {
                                 blockDeserialize = this.deserialize('signed_block', response.block);
                             } else {
                                 blockDeserialize = Promise.reject(
-                                    new Error('Unsupported table result type received ' + type)
+                                    new Error(`Unsupported table result type received ${  type}`)
                                 );
                             }
                         } else if (this.shipOptions.fetch_block) {
@@ -194,7 +195,7 @@ export class StateHistoryConnection extends EventEmitter {
 
                         if (response.deltas) {
                             deltas = this.deserialize('table_delta[]', response.deltas).then((res) =>
-                                this.deserializeDeltas(res)
+                                this.deserializeDeltas(res as unknown[])
                             );
                         } else if (this.shipOptions.fetch_deltas) {
                             if (this.connectionOptions.allow_empty_deltas) {
@@ -236,8 +237,8 @@ export class StateHistoryConnection extends EventEmitter {
                                 }
                             }
 
-                            let deserializedTraces = [];
-                            let deserializedDeltas = [];
+                            let deserializedTraces: ShipBlockResponse['traces'] = [];
+                            let deserializedDeltas: ShipBlockResponse['deltas'] = [];
                             let deserializedBlock: unknown;
                             try {
                                 deserializedBlock = await blockDeserialize;
@@ -245,7 +246,7 @@ export class StateHistoryConnection extends EventEmitter {
                                 this.emit(
                                     'error',
                                     new ShipError(
-                                        'Failed to deserialize Block at block #' + response.this_block.block_num,
+                                        `Failed to deserialize Block at block #${  response.this_block.block_num}`,
                                         e as Error
                                     )
                                 );
@@ -257,12 +258,12 @@ export class StateHistoryConnection extends EventEmitter {
                             }
 
                             try {
-                                deserializedTraces = await traces;
+                                deserializedTraces = (await traces) as ShipBlockResponse['traces'];
                             } catch (error) {
                                 this.emit(
                                     'error',
                                     new ShipError(
-                                        'Failed to deserialize traces at block #' + response.this_block.block_num,
+                                        `Failed to deserialize traces at block #${  response.this_block.block_num}`,
                                         error as Error
                                     )
                                 );
@@ -274,12 +275,12 @@ export class StateHistoryConnection extends EventEmitter {
                             }
 
                             try {
-                                deserializedDeltas = await deltas;
+                                deserializedDeltas = (await deltas) as ShipBlockResponse['deltas'];
                             } catch (error) {
                                 this.emit(
                                     'error',
                                     new ShipError(
-                                        'Failed to deserialize deltas at block #' + response.this_block.block_num,
+                                        `Failed to deserialize deltas at block #${  response.this_block.block_num}`,
                                         error as Error
                                     )
                                 );
@@ -369,7 +370,7 @@ export class StateHistoryConnection extends EventEmitter {
     }
 
     async startProcessing(consumer: IShipConsumer): Promise<void> {
-        this.emit('info', `Starting ship connection...`);
+        this.emit('info', 'Starting ship connection...');
 
         const requestConfig = await consumer.getRequestBlockConfig();
 
@@ -436,7 +437,7 @@ export class StateHistoryConnection extends EventEmitter {
         this.emit('debug', `Block ${block.block.block_num} processed`);
     }
 
-    private async deserialize(type: string, data: Uint8Array): Promise<any> {
+    private async deserialize(type: string, data: Uint8Array): Promise<unknown> {
         const result = await this.deserializer.deserialize([{ type, data }]);
         if (result[0].success) {
             return result[0].data;
@@ -445,7 +446,7 @@ export class StateHistoryConnection extends EventEmitter {
         throw new Error(result[0].message);
     }
 
-    private async deserializeArray(rows: Array<{ type: string; data: Uint8Array }>): Promise<any> {
+    private async deserializeArray(rows: Array<{ type: string; data: Uint8Array }>): Promise<unknown[]> {
         const result = await this.deserializer.deserialize(rows);
 
         const dsError = result.find((row) => !row.success);
@@ -457,13 +458,15 @@ export class StateHistoryConnection extends EventEmitter {
         return result.map((row) => row.data);
     }
 
-    private async deserializeDeltas(deltas: any[]): Promise<any> {
+    private async deserializeDeltas(deltas: unknown[]): Promise<unknown[]> {
+        type TableDeltaTuple = [string, { name: string; rows: Array<{ present: boolean; data: Uint8Array }> }];
         return await Promise.all(
-            deltas.map(async (delta: any) => {
+            deltas.map(async (rawDelta) => {
+                const delta = rawDelta as TableDeltaTuple;
                 if (delta[0] === 'table_delta_v0' || delta[0] === 'table_delta_v1') {
                     if (this.requiredDeltas.includes(delta[1].name)) {
                         const deserialized = await this.deserializeArray(
-                            delta[1].rows.map((row: any) => ({
+                            delta[1].rows.map((row) => ({
                                 type: delta[1].name,
                                 data: row.data,
                             }))
@@ -473,7 +476,7 @@ export class StateHistoryConnection extends EventEmitter {
                             delta[0],
                             {
                                 ...delta[1],
-                                rows: delta[1].rows.map((row: any, index: number) => ({
+                                rows: delta[1].rows.map((row, index) => ({
                                     present: !!row.present,
                                     data: deserialized[index],
                                 })),
@@ -484,7 +487,7 @@ export class StateHistoryConnection extends EventEmitter {
                     return delta;
                 }
 
-                throw Error('Unsupported table delta type received ' + delta[0]);
+                throw Error(`Unsupported table delta type received ${delta[0]}`);
             })
         );
     }

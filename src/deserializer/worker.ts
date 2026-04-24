@@ -7,7 +7,7 @@ const args: { abi: Abi } = workerData;
 const singleThreadDeserializer = new SingleThreadDeserializer(args.abi);
 
 if (parentPort) {
-    parentPort.on('message', async (param: Array<{ type: string; data: Uint8Array | string; abi?: any }>) => {
+    parentPort.on('message', async (param: Array<{ type: string; data: Uint8Array | string; abi?: Abi }>) => {
         const result = await singleThreadDeserializer.deserialize(param);
 
         parentPort!.postMessage(result);

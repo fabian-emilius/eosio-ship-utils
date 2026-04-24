@@ -51,7 +51,7 @@ export interface IBlockRequest {
     start_block_num?: number;
     end_block_num?: number;
     max_messages_in_flight?: number;
-    have_positions?: any[];
+    have_positions?: Array<{ block_num: number; block_id: string }>;
     irreversible_only?: boolean;
     fetch_block?: boolean;
     fetch_traces?: boolean;
@@ -87,11 +87,11 @@ export type ShipBlock = {
     transaction_mroot?: string;
     action_mroot?: string;
     schedule_version?: number;
-    new_producers?: any | null;
-    header_extensions?: any[];
+    new_producers?: unknown | null;
+    header_extensions?: unknown[];
     producer_signature?: string;
-    transactions?: any[];
-    block_extensions?: any[];
+    transactions?: unknown[];
+    block_extensions?: unknown[];
 };
 
 export type ShipTransactionTrace = [
@@ -106,9 +106,9 @@ export type ShipTransactionTrace = [
         scheduled: boolean;
         action_traces: ShipActionTrace[];
         account_ram_delta: Array<{ account: string; delta: number }> | null;
-        except: any | null;
-        error_code: any | null;
-        failed_dtrx_trace: any | null;
+        except: unknown | null;
+        error_code: unknown | null;
+        failed_dtrx_trace: unknown | null;
         partial: ShipPartialTransaction;
     }
 ];
@@ -130,8 +130,8 @@ export type ShipActionTrace<T = Uint8Array> = [
         elapsed: string;
         console: string;
         account_ram_deltas: Array<{ account: string; delta: number }>;
-        except: any | null;
-        error_code: any | null;
+        except: unknown | null;
+        error_code: unknown | null;
     }
 ];
 
@@ -157,9 +157,9 @@ export type ShipPartialTransaction = [
         max_net_usage_words: number;
         max_cpu_usage_ms: number;
         delay_sec: number;
-        transaction_extensions: any[];
+        transaction_extensions: unknown[];
         signatures: string[];
-        context_free_data: any[];
+        context_free_data: unknown[];
     }
 ];
 

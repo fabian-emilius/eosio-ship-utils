@@ -22,6 +22,7 @@ export class LocalAbiProvider implements IAbiProvider {
         this.rpc = new JsonRpc(params.rpcEndpoint, { fetch: params.fetchApi ?? fetch });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     async init(): Promise<void> {}
 
     async getAbi(contract: string, blockNum: number): Promise<Abi> {

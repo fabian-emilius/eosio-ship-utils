@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import * as fs from 'fs';
 import { ShipConsumer } from '../consumer/consumer.js';
 import { StateHistoryConnection } from '../ship.js';
@@ -42,7 +43,7 @@ async function start(): Promise<void> {
             {
                 table: '*',
                 contract: 'atomicassets',
-                processor: (p) => {
+                processor: (p): Promise<void> => {
                     fileOutput.write(JSON.stringify(p.delta));
                     fileOutput.write('\n');
                     return Promise.resolve();
@@ -51,7 +52,7 @@ async function start(): Promise<void> {
             {
                 table: '*',
                 contract: 'atomicmarket',
-                processor: (p) => {
+                processor: (p): Promise<void> => {
                     fileOutput.write(JSON.stringify(p.delta));
                     fileOutput.write('\n');
                     return Promise.resolve();
@@ -59,7 +60,7 @@ async function start(): Promise<void> {
             },
         ],
         preBlockHook: [
-            async (block) => {
+            async (block): Promise<void> => {
                 fileOutput.write(
                     `--------------------- Processing block ${block.this_block.block_num} - ${
                         block.this_block.block_id
@@ -69,7 +70,7 @@ async function start(): Promise<void> {
             },
         ],
         postBlockHook: [
-            async (block) => {
+            async (block): Promise<void> => {
                 fileOutput.write(
                     `############## Finished Processing block ${block.this_block.block_num} - ${
                         block.this_block.block_id

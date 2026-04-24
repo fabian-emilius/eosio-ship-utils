@@ -1,7 +1,7 @@
 {
   "name": "spring-ship-tools",
   "version": "1.0.0",
-  "description": "TypeScript utilities for connecting to and consuming EOSIO/Antelope State History (Ship) WebSocket endpoints",
+  "description": "TypeScript utilities for connecting to and consuming EOSIO/Antelope/Spring State History (Ship) WebSocket endpoints",
   "author": "Fabian Emilius",
   "license": "MIT",
   "repository": {
@@ -34,7 +34,7 @@
     "build": "tsc",
     "start:example": "tsc && node build/bin/base-example.js",
     "dev:start:example": "DEV=true nodemon src/bin/base-example.ts",
-    "lint": "eslint 'src/**/*.ts'",
+    "lint": "eslint --fix 'src/**/*.ts'",
     "prepare": "husky"
   },
   "dependencies": {

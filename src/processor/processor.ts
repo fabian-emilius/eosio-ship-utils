@@ -97,7 +97,7 @@ export class BlockProcessor extends EventEmitter implements IBlockProcessor {
         }
     }
 
-    private findDeltaProcessors(data: IExtractedShipDelta<Uint8Array>) {
+    private findDeltaProcessors(data: IExtractedShipDelta<Uint8Array>): IDeltaListener[] {
         return this.deltaListeners.filter((dL) => {
             if (dL.contract === '*' || dL.contract === data.delta.code) {
                 return dL.table === '*' || dL.table === data.delta.table;
@@ -174,7 +174,7 @@ export class BlockProcessor extends EventEmitter implements IBlockProcessor {
         }));
     }
 
-    private findTraceProcessors(data: IExtractedShipTrace<Uint8Array>) {
+    private findTraceProcessors(data: IExtractedShipTrace<Uint8Array>): ITraceListener[] {
         return this.traceListeners.filter((tL) => {
             if (data.trace.act.account === 'eosio' && data.trace.act.name === 'onblock') {
                 return false;
@@ -252,7 +252,7 @@ export class BlockProcessor extends EventEmitter implements IBlockProcessor {
             const txTrace = tp.data.tx.traces.find((trace) => trace.global_sequence === tp.data.trace.global_sequence);
 
             if (txTrace) {
-                txTrace.act.data = deserializedTraces[i].data as any;
+                txTrace.act.data = deserializedTraces[i].data as Uint8Array;
             }
 
             return {
