@@ -1,11 +1,10 @@
 import * as fs from 'fs';
-import fetch from 'node-fetch';
-import { ShipConsumer } from '../consumer/consumer';
-import { StateHistoryConnection } from '../ship';
-import { EOSJsDeserializer } from '../deserializer/eos-js-deserializer';
-import { BlockProcessor } from '../processor/processor';
-import { LocalAbiProvider } from '../abi/local';
-import { LocalBlockRepository } from '../consumer/repositories/local';
+import { ShipConsumer } from '../consumer/consumer.js';
+import { StateHistoryConnection } from '../ship.js';
+import { EOSJsDeserializer } from '../deserializer/eos-js-deserializer.js';
+import { BlockProcessor } from '../processor/processor.js';
+import { LocalAbiProvider } from '../abi/local.js';
+import { LocalBlockRepository } from '../consumer/repositories/local.js';
 
 async function start(): Promise<void> {
     const endpoint = '-';
@@ -28,7 +27,6 @@ async function start(): Promise<void> {
     const fileOutput = fs.createWriteStream('out.out');
 
     const abi = new LocalAbiProvider({
-        fetchApi: fetch,
         rpcEndpoint: 'https://rpc-wax-testnet.eu.aws.pink.gg',
     });
 

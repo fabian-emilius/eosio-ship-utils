@@ -4,12 +4,12 @@ import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 
-import { IBlockRequest, IShipConnectionOptions, ShipBlockResponse } from './types/ship';
-import { deserializeEosioType, serializeEosioType } from './deserializer/serialization';
-import ShipError from './error/ship';
-import { IShipConsumer } from './types/interfaces';
+import { IBlockRequest, IShipConnectionOptions, ShipBlockResponse } from './types/ship.js';
+import { deserializeEosioType, serializeEosioType } from './deserializer/serialization.js';
+import ShipError from './error/ship.js';
+import { IShipConsumer } from './types/interfaces.js';
 import { oneLineTrim } from 'common-tags';
-import { EOSJsDeserializer } from './deserializer/eos-js-deserializer';
+import { EOSJsDeserializer } from './deserializer/eos-js-deserializer.js';
 
 interface IStateHistoryConnectionParams {
     endpoint: string;
@@ -20,9 +20,9 @@ interface IStateHistoryConnectionParams {
 export class StateHistoryConnection extends EventEmitter {
     private readonly endpoint: string;
     private connectionOptions: IShipConnectionOptions;
-    private shipOptions: IBlockRequest;
+    private shipOptions!: IBlockRequest;
 
-    private consumer: IShipConsumer;
+    private consumer?: IShipConsumer;
     private requiredDeltas: string[];
 
     private abi?: Abi;
@@ -37,7 +37,7 @@ export class StateHistoryConnection extends EventEmitter {
     private blocksQueue: PQueue;
     private deserializer: EOSJsDeserializer;
 
-    private unconfirmed: number;
+    private unconfirmed: number = 0;
 
     constructor(params: IStateHistoryConnectionParams) {
         super();
@@ -93,7 +93,7 @@ export class StateHistoryConnection extends EventEmitter {
     }
 
     send(request: [string, any]): void {
-        this.ws.send(serializeEosioType('request', request, this.types));
+        this.ws!.send(serializeEosioType('request', request, this.types!));
     }
 
     onConnect(): void {
@@ -110,15 +110,15 @@ export class StateHistoryConnection extends EventEmitter {
             if (!this.abi) {
                 this.emit('info', 'Receiving ABI from ship...');
                 this.abi = JSON.parse(data);
-                this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi);
+                this.types = Serialize.getTypesFromAbi(Serialize.createInitialTypes(), this.abi!);
 
-                await this.deserializer.init(this.abi);
+                await this.deserializer.init(this.abi!);
 
                 if (!this.stopped) {
                     this.requestBlocks();
                 }
             } else {
-                const [type, response] = deserializeEosioType('result', data, this.types);
+                const [type, response] = deserializeEosioType('result', data, this.types!);
 
                 if (['get_blocks_result_v0', 'get_blocks_result_v1'].includes(type)) {
                     const respConfig: { [key: string]: { version: number } } = {
@@ -218,18 +218,21 @@ export class StateHistoryConnection extends EventEmitter {
                             if (response.this_block) {
                                 this.shipOptions.start_block_num = response.this_block.block_num + 1;
                             } else {
-                                this.shipOptions.start_block_num += 1;
+                                this.shipOptions.start_block_num = (this.shipOptions.start_block_num ?? 0) + 1;
                             }
 
-                            if (response.this_block && response.last_irreversible) {
-                                this.shipOptions.have_positions = this.shipOptions.have_positions.filter(
+                            const thisBlock = response.this_block;
+                            const lastIrreversible = response.last_irreversible;
+
+                            if (thisBlock && lastIrreversible) {
+                                this.shipOptions.have_positions = (this.shipOptions.have_positions ?? []).filter(
                                     (row) =>
-                                        row.block_num > response.last_irreversible.block_num &&
-                                        row.block_num < response.this_block.block_num
+                                        row.block_num > lastIrreversible.block_num &&
+                                        row.block_num < thisBlock.block_num
                                 );
 
-                                if (response.this_block.block_num > response.last_irreversible.block_num) {
-                                    this.shipOptions.have_positions.push(response.this_block);
+                                if (thisBlock.block_num > lastIrreversible.block_num) {
+                                    this.shipOptions.have_positions.push(thisBlock);
                                 }
                             }
 
@@ -243,7 +246,7 @@ export class StateHistoryConnection extends EventEmitter {
                                     'error',
                                     new ShipError(
                                         'Failed to deserialize Block at block #' + response.this_block.block_num,
-                                        e
+                                        e as Error
                                     )
                                 );
 
@@ -260,7 +263,7 @@ export class StateHistoryConnection extends EventEmitter {
                                     'error',
                                     new ShipError(
                                         'Failed to deserialize traces at block #' + response.this_block.block_num,
-                                        error
+                                        error as Error
                                     )
                                 );
 
@@ -277,7 +280,7 @@ export class StateHistoryConnection extends EventEmitter {
                                     'error',
                                     new ShipError(
                                         'Failed to deserialize deltas at block #' + response.this_block.block_num,
-                                        error
+                                        error as Error
                                     )
                                 );
 
@@ -307,7 +310,7 @@ export class StateHistoryConnection extends EventEmitter {
                                     'error',
                                     new ShipError(
                                         `Ship blocks queue stopped due to an error at #${response.this_block.block_num}`,
-                                        error
+                                        error as Error
                                     )
                                 );
 
@@ -319,7 +322,7 @@ export class StateHistoryConnection extends EventEmitter {
 
                             this.unconfirmed += 1;
 
-                            if (this.unconfirmed >= this.connectionOptions.min_block_confirmation) {
+                            if (this.unconfirmed >= (this.connectionOptions.min_block_confirmation ?? 1)) {
                                 this.send(['get_blocks_ack_request_v0', { num_messages: this.unconfirmed }]);
                                 this.unconfirmed = 0;
                             }
@@ -333,9 +336,9 @@ export class StateHistoryConnection extends EventEmitter {
                 }
             }
         } catch (e) {
-            this.emit('error', new ShipError('error while processing message', e));
+            this.emit('error', new ShipError('error while processing message', e as Error));
 
-            this.ws.close();
+            this.ws?.close();
         }
     }
 
@@ -344,11 +347,11 @@ export class StateHistoryConnection extends EventEmitter {
 
         if (this.ws) {
             await this.ws.terminate();
-            this.ws = null;
+            this.ws = undefined;
         }
 
-        this.abi = null;
-        this.types = null;
+        this.abi = undefined;
+        this.types = undefined;
         this.connected = false;
         this.connecting = false;
 
@@ -401,7 +404,7 @@ export class StateHistoryConnection extends EventEmitter {
         this.consumer = undefined;
         this.requiredDeltas = [];
 
-        this.ws.close();
+        this.ws?.close();
 
         this.blocksQueue.clear();
         this.blocksQueue.pause();
@@ -409,18 +412,18 @@ export class StateHistoryConnection extends EventEmitter {
 
     async processBlock(block: ShipBlockResponse): Promise<void> {
         if (!block.this_block) {
-            if (this.shipOptions.start_block_num >= this.shipOptions.end_block_num) {
+            if ((this.shipOptions.start_block_num ?? 0) >= (this.shipOptions.end_block_num ?? 0xffffffff)) {
                 this.emit(
                     'warning',
                     `Empty block #${this.shipOptions.start_block_num} received. Reader finished reading.`
                 );
-            } else if (this.shipOptions.start_block_num % 10000 === 0) {
+            } else if ((this.shipOptions.start_block_num ?? 0) % 10000 === 0) {
                 this.emit(
                     'warning',
                     oneLineTrim`Empty block #
-                        ${this.shipOptions.start_block_num}  
-                        received. 
-                        Node was likely started with a snapshot and you tried to process a block range 
+                        ${this.shipOptions.start_block_num}
+                        received.
+                        Node was likely started with a snapshot and you tried to process a block range
                         before the snapshot. Catching up until init block.`
                 );
             }
@@ -428,7 +431,7 @@ export class StateHistoryConnection extends EventEmitter {
             return;
         }
 
-        await this.consumer.consume(block);
+        await this.consumer!.consume(block);
 
         this.emit('debug', `Block ${block.block.block_num} processed`);
     }

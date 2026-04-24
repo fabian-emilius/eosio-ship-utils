@@ -1,4 +1,4 @@
-import { IAbiProvider, IBlockProcessor } from '../types/interfaces';
+import { IAbiProvider, IBlockProcessor } from '../types/interfaces.js';
 import {
     FullShipBlock,
     IBlockListener,
@@ -10,8 +10,8 @@ import {
     ITraceListener,
     ITraceListenerPayload,
     ShipBlock,
-} from '../types/ship';
-import { deserializeAbi, getActionAbiType, getTableAbiType } from '../deserializer/serialization';
+} from '../types/ship.js';
+import { deserializeAbi, getActionAbiType, getTableAbiType } from '../deserializer/serialization.js';
 import { EventEmitter } from 'events';
 
 interface IProcessorParams {
@@ -31,8 +31,8 @@ export class BlockProcessor extends EventEmitter implements IBlockProcessor {
     private readonly traceListeners: ITraceListener[];
     private readonly deltaListeners: IDeltaListener[];
     private readonly blockListeners: IBlockListener[];
-    private readonly preBlockHooks?: IBlockListener[];
-    private readonly postBlockHooks?: IBlockListener[];
+    private readonly preBlockHooks: IBlockListener[];
+    private readonly postBlockHooks: IBlockListener[];
     private readonly deserializer: IDeserializer;
     private readonly abiProvider: IAbiProvider;
     private readonly failOnDeserializationError: boolean;
@@ -353,26 +353,26 @@ export class BlockProcessor extends EventEmitter implements IBlockProcessor {
             }))
         );
 
-        const neededAbis = deserializedAbiTraces.filter(
-            (deserializedTrace: { success: boolean; data: { account: string; abi: Uint8Array } }) => {
-                if (!deserializedTrace.success) {
-                    return false;
-                }
-
-                const isEOSAbi = deserializedTrace.data.account === 'eosio';
-                const isRequiredInDeltas = this.deltaListeners.some(
-                    (dl) => dl.contract === '*' || dl.contract === deserializedTrace.data.account
-                );
-                const isRequiredInTraces = this.traceListeners.some(
-                    (tl) => tl.account === '*' || tl.account === deserializedTrace.data.account
-                );
-
-                return isEOSAbi || isRequiredInDeltas || isRequiredInTraces;
+        const neededAbis = (
+            deserializedAbiTraces as Array<{ success: boolean; data: { account: string; abi: Uint8Array } }>
+        ).filter((deserializedTrace) => {
+            if (!deserializedTrace.success) {
+                return false;
             }
-        );
+
+            const isEOSAbi = deserializedTrace.data.account === 'eosio';
+            const isRequiredInDeltas = this.deltaListeners.some(
+                (dl) => dl.contract === '*' || dl.contract === deserializedTrace.data.account
+            );
+            const isRequiredInTraces = this.traceListeners.some(
+                (tl) => tl.account === '*' || tl.account === deserializedTrace.data.account
+            );
+
+            return isEOSAbi || isRequiredInDeltas || isRequiredInTraces;
+        });
 
         await Promise.all(
-            neededAbis.map(async (trace: { success: boolean; data: { account: string; abi: Uint8Array } }) => {
+            neededAbis.map(async (trace) => {
                 try {
                     return this.abiProvider.setAbi(trace.data.account, block.block_num, deserializeAbi(trace.data.abi));
                 } catch (e) {

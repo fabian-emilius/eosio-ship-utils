@@ -1,7 +1,6 @@
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
-import type fetch from 'node-fetch';
 
-import { IAbiProvider } from '../types/interfaces';
+import { IAbiProvider } from '../types/interfaces.js';
 import { JsonRpc } from 'eosjs';
 
 interface IAbiHistory {
@@ -12,7 +11,7 @@ interface IAbiHistory {
 
 interface ILocalAbiProviderParams {
     rpcEndpoint: string;
-    fetchApi: typeof fetch;
+    fetchApi?: typeof globalThis.fetch;
 }
 
 export class LocalAbiProvider implements IAbiProvider {
@@ -20,7 +19,7 @@ export class LocalAbiProvider implements IAbiProvider {
     private savedAbis: IAbiHistory[] = [];
 
     constructor(private readonly params: ILocalAbiProviderParams) {
-        this.rpc = new JsonRpc(params.rpcEndpoint, { fetch: params.fetchApi });
+        this.rpc = new JsonRpc(params.rpcEndpoint, { fetch: params.fetchApi ?? fetch });
     }
 
     async init(): Promise<void> {}
@@ -42,8 +41,6 @@ export class LocalAbiProvider implements IAbiProvider {
         const result = await this.rpc.get_abi(contract);
 
         if (!result.abi) {
-            await this.setAbi(contract, info.head_block_num, undefined);
-
             throw new Error(`No Abi found for ${contract}`);
         }
 

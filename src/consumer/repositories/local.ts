@@ -1,5 +1,5 @@
-import { ShipBlockResponse } from '../../types/ship';
-import { IProcessedBlockRepository } from '../../types/interfaces';
+import { ShipBlockResponse } from '../../types/ship.js';
+import { IProcessedBlockRepository } from '../../types/interfaces.js';
 
 export class LocalBlockRepository implements IProcessedBlockRepository {
     constructor(

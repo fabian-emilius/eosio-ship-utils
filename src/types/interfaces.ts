@@ -7,7 +7,7 @@ import {
     IExtractedShipTrace,
     ShipBlock,
     ShipBlockResponse,
-} from './ship';
+} from './ship.js';
 
 export interface IAbiProvider {
     init(): Promise<any>;

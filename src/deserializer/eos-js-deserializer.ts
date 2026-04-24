@@ -1,8 +1,8 @@
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
 
-import { IDeserializer } from '../types/ship';
-import { ParallelDeserializer } from './parallel-deserializer';
-import { SingleThreadDeserializer } from './singlethread-deserializer';
+import { IDeserializer } from '../types/ship.js';
+import { ParallelDeserializer } from './parallel-deserializer.js';
+import { SingleThreadDeserializer } from './singlethread-deserializer.js';
 
 interface IDeserializerParams {
     threads?: number;
@@ -11,7 +11,7 @@ interface IDeserializerParams {
 export class EOSJsDeserializer implements IDeserializer {
     waiting: number = 0;
 
-    private strategyDeserializer: IDeserializer;
+    private strategyDeserializer!: IDeserializer;
 
     constructor(private readonly params: IDeserializerParams) {}
 

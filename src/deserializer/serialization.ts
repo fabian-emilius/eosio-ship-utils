@@ -7,8 +7,8 @@ import {
     ShipBlock,
     ShipTableDelta,
     ShipTransactionTrace,
-} from '../types/ship';
-import { EosioActionTrace, EosioTransaction } from '../types/leap';
+} from '../types/ship.js';
+import { EosioActionTrace, EosioTransaction } from '../types/leap.js';
 import { createAbiTypes, getTypesFromAbi, SerialBuffer, supportedAbiVersion } from 'eosjs/dist/eosjs-serialize';
 
 export function convertEosioTimestampToDate(timestamp: string): Date {
@@ -183,5 +183,5 @@ export function deserializeAbi(serializedAbi: Uint8Array): Abi {
     }
     buffer.restartRead();
     const abiTypes = getTypesFromAbi(createAbiTypes());
-    return abiTypes.get('abi_def').deserialize(buffer);
+    return abiTypes.get('abi_def')!.deserialize(buffer);
 }

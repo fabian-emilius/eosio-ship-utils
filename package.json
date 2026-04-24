@@ -1,44 +1,65 @@
 {
-  "name": "eosio-ship-utils",
+  "name": "spring-ship-tools",
   "version": "1.0.0",
-  "description": "EOSIO Ship utils",
-  "author": "",
-  "repository": "https://github.com/fabian-emilius/eosio-ship-utils",
+  "description": "TypeScript utilities for connecting to and consuming EOSIO/Antelope State History (Ship) WebSocket endpoints",
+  "author": "Fabian Emilius",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fabian-emilius/spring-ship-tools.git"
+  },
+  "homepage": "https://github.com/fabian-emilius/spring-ship-tools#readme",
+  "bugs": {
+    "url": "https://github.com/fabian-emilius/spring-ship-tools/issues"
+  },
+  "keywords": [
+    "eosio",
+    "antelope",
+    "spring",
+    "ship",
+    "state-history"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "type": "module",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start:example": "tsc && node build/bin/base-example.js",
     "dev:start:example": "DEV=true nodemon src/bin/base-example.ts",
-    "docs": "nodemon docs/bin/docs.ts ",
     "lint": "eslint 'src/**/*.ts'",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "dependencies": {
     "common-tags": "^1.8.2",
     "eosjs": "^22.1.0",
     "node-worker-threads-pool": "^1.5.1",
-    "p-queue": "^6.6.2",
-    "ws": "^8.13.0",
-    "node-fetch": "^2.6.9"
+    "p-queue": "^9.1.2",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/common-tags": "^1.8.1",
-    "@types/elliptic": "^6.4.12",
-    "@types/node": "^14.14.45",
-    "@types/node-fetch": "^2.5.10",
-    "@types/ws": "^7.4.4",
-    "@typescript-eslint/eslint-plugin": "^5.9.1",
-    "@typescript-eslint/parser": "^5.9.1",
-    "eslint": "^8.6.0",
-    "eslint-config-prettier": "^8.3.0",
-    "husky": "^7.0.4",
-    "lint-staged": "^12.3.3",
-    "nodemon": "^2.0.15",
-    "nyc": "^15.1.0",
-    "prettier": "^2.7.1",
-    "ts-node": "^10.7.0",
-    "typescript": "^4.6.3"
+    "@types/common-tags": "^1.8.4",
+    "@types/elliptic": "^6.4.18",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.13",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.0",
+    "lint-staged": "^16.4.0",
+    "nodemon": "^3.1.0",
+    "nyc": "^18.0.0",
+    "prettier": "^3.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
   },
   "lint-staged": {
     "*.{ts,js}": [

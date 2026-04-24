@@ -1,4 +1,4 @@
-import { EosioActionTrace, EosioContractRow, EosioTransaction } from './leap';
+import { EosioActionTrace, EosioContractRow, EosioTransaction } from './leap.js';
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
 
 export interface ITraceListenerPayload<T> {

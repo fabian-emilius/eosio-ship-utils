@@ -1,6 +1,7 @@
+import { fileURLToPath } from 'url';
 import { StaticPool } from 'node-worker-threads-pool';
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
-import { IDeserializer } from '../types/ship';
+import { IDeserializer } from '../types/ship.js';
 
 export class ParallelDeserializer implements IDeserializer {
     waiting: number = 0;
@@ -16,7 +17,7 @@ export class ParallelDeserializer implements IDeserializer {
     constructor(abi: Abi, threads: number = 1) {
         this.deserializeWorkers = new StaticPool({
             size: threads,
-            task: `${__dirname}/worker.js`,
+            task: fileURLToPath(new URL('./worker.js', import.meta.url)),
             workerData: { abi },
         });
     }
@@ -27,7 +28,9 @@ export class ParallelDeserializer implements IDeserializer {
         this.waiting += 1;
 
         try {
-            return this.deserializeWorkers.exec(param);
+            return this.deserializeWorkers.exec(
+                param.filter((p): p is { type: string; data: Uint8Array | string; abi?: Abi } => p !== undefined)
+            );
         } finally {
             this.waiting -= 1;
         }

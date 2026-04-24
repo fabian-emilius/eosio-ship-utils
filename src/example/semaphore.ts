@@ -7,7 +7,7 @@ export class Semaphore {
     private take(): void {
         if (this.waiting.length > 0 && this.counter < this.max) {
             this.counter++;
-            const promise = this.waiting.shift();
+            const promise = this.waiting.shift()!;
             void promise.resolve();
         }
     }

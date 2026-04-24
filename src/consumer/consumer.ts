@@ -1,12 +1,12 @@
-import { IBlockProcessor, IProcessedBlockRepository, IShipConsumer } from '../types/interfaces';
+import { IBlockProcessor, IProcessedBlockRepository, IShipConsumer } from '../types/interfaces.js';
 import {
     FullShipBlock,
     IBlockRequest,
     IExtractedShipDelta,
     IExtractedShipTrace,
     ShipBlockResponse,
-} from '../types/ship';
-import { extractShipDeltas, extractShipTraces } from '../deserializer/serialization';
+} from '../types/ship.js';
+import { extractShipDeltas, extractShipTraces } from '../deserializer/serialization.js';
 
 export interface IConsumerSettings {
     delta_types: string[];
@@ -74,7 +74,9 @@ export class ShipConsumer implements IShipConsumer {
         while (this.delayedBlocks.length > this.blockDelay) {
             const nextBlock = this.delayedBlocks.shift();
 
-            await this.processBlock(nextBlock);
+            if (nextBlock) {
+                await this.processBlock(nextBlock);
+            }
         }
     }
 
@@ -118,5 +120,6 @@ export class ShipConsumer implements IShipConsumer {
                 block: resp.block,
             });
         }
+        return [];
     }
 }

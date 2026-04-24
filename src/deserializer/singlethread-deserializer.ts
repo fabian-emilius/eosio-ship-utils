@@ -1,8 +1,8 @@
 import { Serialize } from 'eosjs';
 
-import { deserializeEosioType } from './serialization';
+import { deserializeEosioType } from './serialization.js';
 import { Abi } from 'eosjs/dist/eosjs-rpc-interfaces';
-import { IDeserializer } from '../types/ship';
+import { IDeserializer } from '../types/ship.js';
 
 export class SingleThreadDeserializer implements IDeserializer {
     waiting: number = 0;
